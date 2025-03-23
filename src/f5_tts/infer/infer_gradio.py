@@ -1,9 +1,8 @@
 # ruff: noqa: E402
-# Above allows ruff to ignore E402: module level import not at top of file
-
 import json
 import re
 import tempfile
+import os  # szükséges a normaliser mappák beolvasásához
 from collections import OrderedDict
 from importlib.resources import files
 
@@ -17,7 +16,6 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 try:
     import spaces
-
     USING_SPACES = True
 except ImportError:
     USING_SPACES = False
@@ -40,7 +38,6 @@ from f5_tts.infer.utils_infer import (
     save_spectrogram,
 )
 
-
 DEFAULT_TTS_MODEL = "F5-TTS_v1"
 tts_model_choice = DEFAULT_TTS_MODEL
 
@@ -51,8 +48,24 @@ DEFAULT_TTS_MODEL_CFG = [
 ]
 
 
-# load models
+# Függvény a ./normalisers mappában lévő almappák beolvasásához,
+# csak azokat veszi figyelembe, amelyek tartalmazzák a normaliser.py fájlt.
+def get_normaliser_choices():
+    normaliser_path = "./normalisers"
+    choices = []
+    if os.path.exists(normaliser_path) and os.path.isdir(normaliser_path):
+        for item in os.listdir(normaliser_path):
+            subdir = os.path.join(normaliser_path, item)
+            if os.path.isdir(subdir) and os.path.exists(os.path.join(subdir, "normaliser.py")):
+                choices.append(item)
+    return choices
 
+normaliser_choices = get_normaliser_choices()
+
+# A TTS modell választásánál csak az alap modellek szerepelnek
+all_tts_choices = [DEFAULT_TTS_MODEL, "E2-TTS", "Custom"]
+
+# load models
 vocoder = load_vocoder()
 
 
@@ -186,11 +199,23 @@ with gr.Blocks() as app_credits:
 * [RootingInLoad](https://github.com/RootingInLoad) for initial chunk generation and podcast app exploration
 * [jpgallegoar](https://github.com/jpgallegoar) for multiple speech-type generation & voice chat
 """)
+
+
 with gr.Blocks() as app_tts:
     gr.Markdown("# Batched TTS")
     ref_audio_input = gr.Audio(label="Reference Audio", type="filepath")
     gen_text_input = gr.Textbox(label="Text to Generate", lines=10)
+    
+    # Új: Normaliser választás komponens (None esetén nem történik normalizálás)
+    with gr.Row():
+        choose_normaliser = gr.Radio(
+            choices=["None"] + get_normaliser_choices(),
+            label="Choose Normaliser",
+            value="None",
+        )
+    
     generate_btn = gr.Button("Synthesize", variant="primary")
+    
     with gr.Accordion("Advanced Settings", open=False):
         ref_text_input = gr.Textbox(
             label="Reference Text",
@@ -239,12 +264,34 @@ with gr.Blocks() as app_tts:
         cross_fade_duration_slider,
         nfe_slider,
         speed_slider,
+        normaliser_choice_input,  # A normaliser választás értéke
     ):
+        # Ha a normaliser választás nem "None", a normaliser.py-ból a normalize függvényt hívjuk meg
+        if normaliser_choice_input != "None":
+            normaliser_file = os.path.join("normalisers", normaliser_choice_input, "normaliser.py")
+            if os.path.exists(normaliser_file):
+                import importlib.util
+                spec = importlib.util.spec_from_file_location("normaliser", normaliser_file)
+                normaliser_module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(normaliser_module)
+                if hasattr(normaliser_module, "normalize"):
+                    processed_text = normaliser_module.normalize(gen_text_input)
+                else:
+                    print("A normaliser.py nem tartalmazza a 'normalize' függvényt, ezért az eredeti szöveg kerül használatra.")
+                    processed_text = gen_text_input
+            else:
+                print("A megadott normaliser.py fájl nem található, ezért az eredeti szöveg kerül használatra.")
+                processed_text = gen_text_input
+        else:
+            processed_text = gen_text_input
+
+        # A TTS modell választása a globális tts_model_choice változóból történik
+        actual_model = tts_model_choice
         audio_out, spectrogram_path, ref_text_out = infer(
             ref_audio_input,
             ref_text_input,
-            gen_text_input,
-            tts_model_choice,
+            processed_text,
+            actual_model,
             remove_silence,
             cross_fade_duration=cross_fade_duration_slider,
             nfe_step=nfe_slider,
@@ -262,6 +309,7 @@ with gr.Blocks() as app_tts:
             cross_fade_duration_slider,
             nfe_slider,
             speed_slider,
+            choose_normaliser  # itt adjuk át a normaliser választás értékét
         ],
         outputs=[audio_output, spectrogram_output, ref_text_input],
     )
@@ -477,7 +525,7 @@ with gr.Blocks() as app_multistyle:
             # Generate speech for this segment
             audio_out, _, ref_text_out = infer(
                 ref_audio, ref_text, text, tts_model_choice, remove_silence, 0, show_info=print
-            )  # show_info=print no pull to top when generating
+            )
             sr, audio_data = audio_out
 
             generated_audio_segments.append(audio_data)
@@ -525,10 +573,8 @@ with gr.Blocks() as app_multistyle:
         missing_speech_types = speech_types_in_text - speech_types_available
 
         if missing_speech_types:
-            # Disable the generate button
             return gr.update(interactive=False)
         else:
-            # Enable the generate button
             return gr.update(interactive=True)
 
     gen_text_input_multistyle.change(
@@ -552,7 +598,6 @@ Have a conversation with an AI using your reference voice!
 
     if not USING_SPACES:
         load_chat_model_btn = gr.Button("Load Chat Model", variant="primary")
-
         chat_interface_container = gr.Column(visible=False)
 
         @gpu_decorator
@@ -567,14 +612,11 @@ Have a conversation with an AI using your reference voice!
                 )
                 chat_tokenizer_state = AutoTokenizer.from_pretrained(model_name)
                 show_info("Chat model loaded.")
-
             return gr.update(visible=False), gr.update(visible=True)
 
         load_chat_model_btn.click(load_chat_model, outputs=[load_chat_model_btn, chat_interface_container])
-
     else:
         chat_interface_container = gr.Column()
-
         if chat_model_state is None:
             model_name = "Qwen/Qwen2.5-3B-Instruct"
             chat_model_state = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype="auto", device_map="auto")
@@ -600,9 +642,7 @@ Have a conversation with an AI using your reference voice!
                         value="You are not an AI assistant, you are whoever the user says you are. You must stay in character. Keep your responses concise since they will be spoken out loud.",
                         lines=2,
                     )
-
         chatbot_interface = gr.Chatbot(label="Conversation")
-
         with gr.Row():
             with gr.Column():
                 audio_input_chat = gr.Microphone(
@@ -617,7 +657,6 @@ Have a conversation with an AI using your reference voice!
                 )
                 send_btn_chat = gr.Button("Send Message")
                 clear_btn_chat = gr.Button("Clear Conversation")
-
         conversation_state = gr.State(
             value=[
                 {
@@ -627,40 +666,28 @@ Have a conversation with an AI using your reference voice!
             ]
         )
 
-        # Modify process_audio_input to use model and tokenizer from state
         @gpu_decorator
         def process_audio_input(audio_path, text, history, conv_state):
-            """Handle audio or text input from user"""
-
             if not audio_path and not text.strip():
                 return history, conv_state, ""
-
             if audio_path:
                 text = preprocess_ref_audio_text(audio_path, text)[1]
-
             if not text.strip():
                 return history, conv_state, ""
-
             conv_state.append({"role": "user", "content": text})
             history.append((text, None))
-
             response = generate_response(conv_state, chat_model_state, chat_tokenizer_state)
-
             conv_state.append({"role": "assistant", "content": response})
             history[-1] = (text, response)
-
             return history, conv_state, ""
 
         @gpu_decorator
         def generate_audio_response(history, ref_audio, ref_text, remove_silence):
-            """Generate TTS audio for AI response"""
             if not history or not ref_audio:
                 return None
-
             last_user_message, last_ai_response = history[-1]
             if not last_ai_response:
                 return None
-
             audio_result, _, ref_text_out = infer(
                 ref_audio,
                 ref_text,
@@ -669,12 +696,11 @@ Have a conversation with an AI using your reference voice!
                 remove_silence,
                 cross_fade_duration=0.15,
                 speed=1.0,
-                show_info=print,  # show_info=print no pull to top when generating
+                show_info=print,
             )
             return audio_result, ref_text_out
 
         def clear_conversation():
-            """Reset the conversation"""
             return [], [
                 {
                     "role": "system",
@@ -683,11 +709,9 @@ Have a conversation with an AI using your reference voice!
             ]
 
         def update_system_prompt(new_prompt):
-            """Update the system prompt and reset the conversation"""
             new_conv_state = [{"role": "system", "content": new_prompt}]
             return [], new_conv_state
 
-        # Handle audio input
         audio_input_chat.stop_recording(
             process_audio_input,
             inputs=[audio_input_chat, text_input_chat, chatbot_interface, conversation_state],
@@ -701,8 +725,6 @@ Have a conversation with an AI using your reference voice!
             None,
             audio_input_chat,
         )
-
-        # Handle text input
         text_input_chat.submit(
             process_audio_input,
             inputs=[audio_input_chat, text_input_chat, chatbot_interface, conversation_state],
@@ -716,8 +738,6 @@ Have a conversation with an AI using your reference voice!
             None,
             text_input_chat,
         )
-
-        # Handle send button
         send_btn_chat.click(
             process_audio_input,
             inputs=[audio_input_chat, text_input_chat, chatbot_interface, conversation_state],
@@ -731,14 +751,10 @@ Have a conversation with an AI using your reference voice!
             None,
             text_input_chat,
         )
-
-        # Handle clear button
         clear_btn_chat.click(
             clear_conversation,
             outputs=[chatbot_interface, conversation_state],
         )
-
-        # Handle system prompt change and reset conversation
         system_prompt_chat.change(
             update_system_prompt,
             inputs=system_prompt_chat,
@@ -779,14 +795,12 @@ If you're having issues, try converting your reference audio to WAV or MP3, clip
 
     def switch_tts_model(new_choice):
         global tts_model_choice
-        if new_choice == "Custom":  # override in case webpage is refreshed
-            custom_ckpt_path, custom_vocab_path, custom_model_cfg = load_last_used_custom()
-            tts_model_choice = ["Custom", custom_ckpt_path, custom_vocab_path, json.loads(custom_model_cfg)]
-            return (
-                gr.update(visible=True, value=custom_ckpt_path),
-                gr.update(visible=True, value=custom_vocab_path),
-                gr.update(visible=True, value=custom_model_cfg),
-            )
+        if new_choice == "Custom":
+            custom_ckpt_path_update = gr.update(visible=True, value=load_last_used_custom()[0])
+            custom_vocab_path_update = gr.update(visible=True, value=load_last_used_custom()[1])
+            custom_model_cfg_update = gr.update(visible=True, value=load_last_used_custom()[2])
+            tts_model_choice = ["Custom", load_last_used_custom()[0], load_last_used_custom()[1], json.loads(load_last_used_custom()[2])]
+            return custom_ckpt_path_update, custom_vocab_path_update, custom_model_cfg_update
         else:
             tts_model_choice = new_choice
             return gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
@@ -800,11 +814,15 @@ If you're having issues, try converting your reference audio to WAV or MP3, clip
     with gr.Row():
         if not USING_SPACES:
             choose_tts_model = gr.Radio(
-                choices=[DEFAULT_TTS_MODEL, "E2-TTS", "Custom"], label="Choose TTS Model", value=DEFAULT_TTS_MODEL
+                choices=all_tts_choices,
+                label="Choose TTS Model",
+                value=DEFAULT_TTS_MODEL,
             )
         else:
             choose_tts_model = gr.Radio(
-                choices=[DEFAULT_TTS_MODEL, "E2-TTS"], label="Choose TTS Model", value=DEFAULT_TTS_MODEL
+                choices=[DEFAULT_TTS_MODEL, "E2-TTS"],
+                label="Choose TTS Model",
+                value=DEFAULT_TTS_MODEL,
             )
         custom_ckpt_path = gr.Dropdown(
             choices=[DEFAULT_TTS_MODEL_CFG[0]],
@@ -853,7 +871,6 @@ If you're having issues, try converting your reference audio to WAV or MP3, clip
             label="Config: in a dictionary form",
             visible=False,
         )
-
     choose_tts_model.change(
         switch_tts_model,
         inputs=[choose_tts_model],
