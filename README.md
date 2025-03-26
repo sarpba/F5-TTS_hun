@@ -89,7 +89,7 @@ conda activate f5-tts
 > ### 2. Local editable (if also do training, finetuning)
 > 
 > ```bash
-> git clone https://github.com/SWivid/F5-TTS.git
+> git clone https://github.com/sarpba/F5-TTS_hun.git
 > cd F5-TTS
 > # git submodule update --init --recursive  # (optional, if need > bigvgan)
 > pip install -e .
