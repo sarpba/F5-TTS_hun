@@ -14,20 +14,20 @@ from hydra.utils import get_class
 from omegaconf import OmegaConf
 
 from f5_tts.infer.utils_infer import (
-    mel_spec_type,
-    target_rms,
-    cross_fade_duration,
-    nfe_step,
     cfg_strength,
-    sway_sampling_coef,
-    speed,
-    fix_duration,
+    cross_fade_duration,
     device,
+    fix_duration,
     infer_process,
     load_model,
     load_vocoder,
+    mel_spec_type,
+    nfe_step,
     preprocess_ref_audio_text,
     remove_silence_for_generated_wav,
+    speed,
+    sway_sampling_coef,
+    target_rms,
 )
 
 
@@ -323,7 +323,7 @@ def main():
         ref_text_ = voices[voice]["ref_text"]
         gen_text_ = text.strip()
         print(f"Voice: {voice}")
-        audio_segment, final_sample_rate, spectragram = infer_process(
+        audio_segment, final_sample_rate, spectrogram = infer_process(
             ref_audio_,
             ref_text_,
             gen_text_,

@@ -1,14 +1,12 @@
 import gc
 import json
-import numpy as np
 import os
 import platform
-import psutil
 import queue
 import random
 import re
-import signal
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -16,21 +14,23 @@ import threading
 import time
 from glob import glob
 from importlib.resources import files
-from scipy.io import wavfile
 
 import click
 import gradio as gr
 import librosa
+import numpy as np
+import psutil
 import torch
 import torchaudio
 from cached_path import cached_path
 from datasets import Dataset as Dataset_
 from datasets.arrow_writer import ArrowWriter
 from safetensors.torch import load_file, save_file
+from scipy.io import wavfile
 
 from f5_tts.api import F5TTS
-from f5_tts.model.utils import convert_char_to_pinyin
 from f5_tts.infer.utils_infer import transcribe
+from f5_tts.model.utils import convert_char_to_pinyin
 
 
 training_process = None
@@ -1099,7 +1099,7 @@ def vocab_extend(project_name, symbols, model_type):
     return f"vocab old size : {size_vocab}\nvocab new size : {size}\nvocab add : {vocab_size_new}\nnew symbols :\n{vocab_new}"
 
 
-def vocab_check(project_name):
+def vocab_check(project_name, tokenizer_type):
     name_project = project_name
     path_project = os.path.join(path_data, name_project)
 
@@ -1128,6 +1128,8 @@ def vocab_check(project_name):
             continue
 
         text = sp[1].lower().strip()
+        if tokenizer_type == "pinyin":
+            text = convert_char_to_pinyin([text], polyphone=True)[0]
 
         for t in text:
             if t not in vocab and t not in miss_symbols_keep:
@@ -1498,7 +1500,9 @@ Using the extended model, you can finetune to a new language that is missing sym
             txt_info_extend = gr.Textbox(label="Info", value="")
 
             txt_extend.change(vocab_count, inputs=[txt_extend], outputs=[txt_count_symbol])
-            check_button.click(fn=vocab_check, inputs=[cm_project], outputs=[txt_info_check, txt_extend])
+            check_button.click(
+                fn=vocab_check, inputs=[cm_project, tokenizer_type], outputs=[txt_info_check, txt_extend]
+            )
             extend_button.click(
                 fn=vocab_extend, inputs=[cm_project, txt_extend, exp_name_extend], outputs=[txt_info_extend]
             )

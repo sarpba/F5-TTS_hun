@@ -4,6 +4,7 @@ import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
+
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"  # for MPS device compatibility
 sys.path.append(f"{os.path.dirname(os.path.abspath(__file__))}/../../third_party/BigVGAN/")
 
@@ -13,6 +14,7 @@ import tempfile
 from importlib.resources import files
 
 import matplotlib
+
 
 matplotlib.use("Agg")
 
@@ -27,10 +29,8 @@ from transformers import pipeline
 from vocos import Vocos
 
 from f5_tts.model import CFM
-from f5_tts.model.utils import (
-    get_tokenizer,
-    convert_char_to_pinyin,
-)
+from f5_tts.model.utils import convert_char_to_pinyin, get_tokenizer
+
 
 _ref_audio_cache = {}
 
@@ -384,7 +384,7 @@ def infer_process(
 ):
     # Split the input text into batches
     audio, sr = torchaudio.load(ref_audio)
-    max_chars = int(len(ref_text.encode("utf-8")) / (audio.shape[-1] / sr) * (22 - audio.shape[-1] / sr))
+    max_chars = int(len(ref_text.encode("utf-8")) / (audio.shape[-1] / sr) * (22 - audio.shape[-1] / sr) * speed)
     gen_text_batches = chunk_text(gen_text, max_chars=max_chars)
     for i, gen_text in enumerate(gen_text_batches):
         print(f"gen_text {i}", gen_text)
