@@ -29,6 +29,7 @@
 # Create a python 3.10 conda env (you could also use virtualenv)
 conda create -n f5-tts python=3.10
 conda activate f5-tts
+pip install num2words
 ```
 
 ### Install PyTorch with matched device
