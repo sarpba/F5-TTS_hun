@@ -1,9 +1,6 @@
-# ruff: noqa: E402
-# Above allows ruff to ignore E402: module level import not at top of file
-
 import gc
 import json
-import os  # needed for normaliser folder reading
+import os
 import re
 import tempfile
 from collections import OrderedDict
@@ -46,6 +43,12 @@ from f5_tts.infer.utils_infer import (
 from f5_tts.model import DiT, UNetT
 
 
+# Define the absolute path to the normalisers directory relative to this script.
+# This makes the script independent of the current working directory.
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+NORMALISERS_DIR = os.path.join(SCRIPT_DIR, "normalisers")
+
+
 DEFAULT_TTS_MODEL = "F5-TTS_v1"
 tts_model_choice = DEFAULT_TTS_MODEL
 
@@ -58,14 +61,13 @@ DEFAULT_TTS_MODEL_CFG = [
 
 def get_normaliser_choices():
     """
-    Scan the ./normalisers folder for subfolders that contain a normaliser.py file.
-    Returns a list of possible normaliser choices.
+    Scan the normalisers folder (relative to this script) for subfolders
+    that contain a normaliser.py file. Returns a list of possible normaliser choices.
     """
-    normaliser_path = "./normalisers"
     choices = []
-    if os.path.exists(normaliser_path) and os.path.isdir(normaliser_path):
-        for item in os.listdir(normaliser_path):
-            subdir = os.path.join(normaliser_path, item)
+    if os.path.exists(NORMALISERS_DIR) and os.path.isdir(NORMALISERS_DIR):
+        for item in os.listdir(NORMALISERS_DIR):
+            subdir = os.path.join(NORMALISERS_DIR, item)
             if os.path.isdir(subdir) and os.path.exists(os.path.join(subdir, "normaliser.py")):
                 choices.append(item)
     return choices
@@ -315,7 +317,8 @@ with gr.Blocks() as app_tts:
         # -- Normaliser step --
         processed_text = gen_text_input
         if normaliser_choice_input != "None":
-            normaliser_file = os.path.join("normalisers", normaliser_choice_input, "normaliser.py")
+            # Use the absolute path defined at the start of the script
+            normaliser_file = os.path.join(NORMALISERS_DIR, normaliser_choice_input, "normaliser.py")
             if os.path.exists(normaliser_file):
                 try:
                     import importlib.util
@@ -673,7 +676,8 @@ with gr.Blocks() as app_multistyle:
         # -- Load normaliser module if chosen --
         normaliser_module = None
         if normaliser_choice != "None":
-            normaliser_file = os.path.join("normalisers", normaliser_choice, "normaliser.py")
+            # Use the absolute path defined at the start of the script
+            normaliser_file = os.path.join(NORMALISERS_DIR, normaliser_choice, "normaliser.py")
             if os.path.exists(normaliser_file):
                 try:
                     import importlib.util
@@ -1072,7 +1076,7 @@ Have a conversation with an AI using your reference voice!
 with gr.Blocks() as app:
     gr.Markdown(
         f"""
-# E2/F5 TTS
+# E2/F5 TTS_hun normalizálóval ellátott változata
 
 This is {"a local web UI for [F5 TTS](https://github.com/SWivid/F5-TTS)" if not USING_SPACES else "an online demo for [F5-TTS](https://github.com/SWivid/F5-TTS)"} with advanced batch processing support. This app supports the following TTS models:
 
@@ -1187,8 +1191,8 @@ If you're having issues, try converting your reference audio to WAV or MP3, clip
     global_choose_normaliser = gr.Radio(
         choices=["None"] + normaliser_choices_list,
         label="Choose Text Normaliser (Global for Basic/Multi-Speech)",
-        value="None",
-        info="Applies to text in 'Basic-TTS' and 'Multi-Speech' tabs. Requires normaliser.py in ./normalisers/<name>/ folder."
+        value="hun" if "hun" in normaliser_choices_list else "None",
+        info="Applies to text in 'Basic-TTS' and 'Multi-Speech' tabs. Looks for normaliser.py in <script_dir>/normalisers/<name>/ folder."
     )
 
 

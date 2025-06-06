@@ -91,7 +91,7 @@ pip install num2words
 > 
 > ```bash
 > git clone https://github.com/SWivid/F5-TTS.git
-> cd F5-TTS
+> cd F5-TTS_hun
 > # git submodule update --init --recursive  # (optional, if need > bigvgan)
 > pip install -e .
 > ```
