@@ -169,6 +169,12 @@ def infer(
     torch.manual_seed(seed)
     used_seed = seed
 
+    # Normalize possibly None inputs to strings to avoid AttributeError on .strip()
+    if gen_text is None:
+        gen_text = ""
+    if ref_text is None:
+        ref_text = ""
+
     if not gen_text.strip():
         gr.Warning("Please enter text to generate or upload a text file.")
         return gr.update(), gr.update(), ref_text, used_seed # Ensure seed is returned
@@ -209,18 +215,25 @@ def infer(
         progress=gr.Progress(),
     )
 
-    # Remove silence
+    # Remove silence (Windows-safe temp handling)
     if remove_silence:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
-            sf.write(f.name, final_wave, final_sample_rate)
-            remove_silence_for_generated_wav(f.name)
-            final_wave, _ = torchaudio.load(f.name)
-        final_wave = final_wave.squeeze().cpu().numpy()
+        fd, tmp_wav = tempfile.mkstemp(suffix=".wav")
+        os.close(fd)
+        try:
+            sf.write(tmp_wav, final_wave, final_sample_rate)
+            remove_silence_for_generated_wav(tmp_wav)
+            final_wave, _ = torchaudio.load(tmp_wav)
+            final_wave = final_wave.squeeze().cpu().numpy()
+        finally:
+            try:
+                os.remove(tmp_wav)
+            except OSError:
+                pass
 
-    # Save the spectrogram
-    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_spectrogram:
-        spectrogram_path = tmp_spectrogram.name
-        save_spectrogram(combined_spectrogram, spectrogram_path)
+    # Save the spectrogram (Windows-safe temp handling)
+    fd, spectrogram_path = tempfile.mkstemp(suffix=".png")
+    os.close(fd)
+    save_spectrogram(combined_spectrogram, spectrogram_path)
 
     return (final_sample_rate, final_wave), spectrogram_path, ref_text, used_seed
 
@@ -239,6 +252,7 @@ with gr.Blocks() as app_tts:
     with gr.Row():
         gen_text_input = gr.Textbox(
             label="Text to Generate",
+            value="",
             lines=10,
             max_lines=40,
             scale=4,
@@ -249,6 +263,7 @@ with gr.Blocks() as app_tts:
         with gr.Row():
             ref_text_input = gr.Textbox(
                 label="Reference Text",
+                value="",
                 info="Leave blank to automatically transcribe the reference audio. If you enter text or upload a file, it will override automatic transcription.",
                 lines=2,
                 scale=4,
@@ -315,7 +330,7 @@ with gr.Blocks() as app_tts:
             current_seed = int(seed_input)
 
         # -- Normaliser step --
-        processed_text = gen_text_input
+        processed_text = gen_text_input or ""
         if normaliser_choice_input != "None":
             # Use the absolute path defined at the start of the script
             normaliser_file = os.path.join(NORMALISERS_DIR, normaliser_choice_input, "normaliser.py")
@@ -884,6 +899,7 @@ Have a conversation with an AI using your reference voice!
                     with gr.Row():
                         ref_text_chat = gr.Textbox(
                             label="Reference Text",
+                            value="",
                             info="Optional: Leave blank to auto-transcribe",
                             lines=2,
                             scale=3,

@@ -291,6 +291,9 @@ def remove_silence_edges(audio, silence_threshold=-42):
 
 
 def preprocess_ref_audio_text(ref_audio_orig, ref_text, clip_short=True, show_info=print):
+    # Normalize None to empty string to enable auto-transcription path
+    if ref_text is None:
+        ref_text = ""
     show_info("Converting audio...")
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
         aseg = AudioSegment.from_file(ref_audio_orig)
