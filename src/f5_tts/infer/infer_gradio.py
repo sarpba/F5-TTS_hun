@@ -773,7 +773,7 @@ with gr.Blocks() as app_multistyle:
 
         if generated_audio_segments:
             final_audio_data = np.concatenate(generated_audio_segments)
-            return (sr, final_audio_data), output_ref_texts, inference_meta_data
+            return (sr, final_audio_data), *output_ref_texts, inference_meta_data
         else:
             gr.Warning("No audio segments were successfully generated.")
             return None, output_ref_texts, inference_meta_data or None
